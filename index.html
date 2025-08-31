@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback Hub</title>
+    <!-- Use Inter font from Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container-card {
+            background-color: white;
+            padding: 2.5rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .message-box {
+            padding: 1rem;
+            margin-top: 1.5rem;
+            border-radius: 0.75rem;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 flex items-center justify-center min-h-screen">
+    <div class="max-w-4xl w-full">
+        <!-- Main Application Card -->
+        <div class="container-card">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-2 text-center">Feedback Hub</h1>
+            <p class="text-lg text-gray-600 mb-8 text-center">Submit a bug report or a feature request.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- Submission Form -->
+                <div>
+                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Submit a Request</h2>
+                    <form id="feedbackForm" class="space-y-4">
+                        <!-- User ID Display -->
+                        <div class="p-4 bg-blue-50 text-blue-800 rounded-lg text-sm">
+                            <p>Your unique ID: <span id="userIdDisplay" class="font-mono font-bold text-gray-700 break-all">Loading...</span></p>
+                            <p class="text-gray-600 mt-1">Share this with others to identify your submissions.</p>
+                        </div>
+                        <div>
+                            <label for="type" class="block text-sm font-medium text-gray-700">Type of Request</label>
+                            <select id="type" name="type" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-gray-50 focus:border-blue-500 focus:ring-blue-500">
+                                <option value="Bug Report">Bug Report</option>
+                                <option value="Feature Request">Feature Request</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="url" class="block text-sm font-medium text-gray-700">Article URL (optional)</label>
+                            <input type="url" id="url" name="url" placeholder="https://compendiumofeverything.org/article-title" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-gray-50 focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+
+                        <div>
+                            <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+                            <textarea id="description" name="description" required rows="5" placeholder="Please describe the issue or feature in detail..." class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-gray-50 focus:border-blue-500 focus:ring-blue-500"></textarea>
+                        </div>
+                        
+                        <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 ease-in-out">
+                            Submit Request
+                        </button>
+                    </form>
+                    <div id="statusMessage" class="message-box hidden"></div>
+                </div>
+
+                <!-- Live Feed of Submissions -->
+                <div>
+                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Live Submissions</h2>
+                    <div id="submissionsList" class="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+                        <!-- Submissions will be dynamically inserted here -->
+                        <p class="text-gray-500 text-center">Loading submissions...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE
+        // Replace this entire section with the code you copied from the Firebase console
+        const firebaseConfig = {
+          apiKey: "AIzaSyCtCLIqhpcWgQwhDtzQRx2DXngNmwytJWk",
+          authDomain: "compendium-of-everything-dev.firebaseapp.com",
+          projectId: "compendium-of-everything-dev",
+          storageBucket: "compendium-of-everything-dev.firebasestorage.app",
+          messagingSenderId: "322140020080",
+          appId: "1:322140020080:web:889d649e163aba07b603b5",
+          measurementId: "G-1SBW2KYJP4"
+        };
+        // End of Firebase configuration
+
+        // Initialize Firebase services
+        let app;
+        let auth;
+        let db;
+        let userId;
+
+        const statusMessageEl = document.getElementById('statusMessage');
+        const userIdDisplayEl = document.getElementById('userIdDisplay');
+        const submissionsListEl = document.getElementById('submissionsList');
+
+        const showStatus = (message, isSuccess = true) => {
+            statusMessageEl.textContent = message;
+            statusMessageEl.classList.remove('hidden');
+            if (isSuccess) {
+                statusMessageEl.classList.remove('bg-red-100', 'text-red-800');
+                statusMessageEl.classList.add('bg-green-100', 'text-green-800');
+            } else {
+                statusMessageEl.classList.remove('bg-green-100', 'text-red-800');
+                statusMessageEl.classList.add('bg-red-100', 'text-red-800');
+            }
+        };
+
+        const initFirebase = async () => {
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // Sign in anonymously for public access
+                await signInAnonymously(auth);
+                
+                userId = auth.currentUser.uid;
+                userIdDisplayEl.textContent = userId;
+
+                // Listen for real-time updates to the submissions
+                setupRealtimeListener();
+
+                document.getElementById('feedbackForm').addEventListener('submit', handleFormSubmit);
+
+            } catch (error) {
+                console.error("Firebase initialization or authentication failed:", error);
+                showStatus(`Failed to initialize application. Error: ${error.message}`, false);
+            }
+        };
+
+        const handleFormSubmit = async (event) => {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+            const data = {
+                type: formData.get('type'),
+                url: formData.get('url'),
+                description: formData.get('description'),
+                submittedBy: userId,
+                timestamp: serverTimestamp(),
+            };
+
+            try {
+                const collectionPath = `reports`;
+                await addDoc(collection(db, collectionPath), data);
+                showStatus("Thank you! Your request has been submitted successfully.");
+                form.reset();
+            } catch (error) {
+                console.error("Error submitting request:", error);
+                showStatus(`Failed to submit request. Error: ${error.message}`, false);
+            }
+        };
+        
+        const setupRealtimeListener = () => {
+            const collectionPath = `reports`;
+            const q = query(collection(db, collectionPath));
+            
+            onSnapshot(q, (querySnapshot) => {
+                submissionsListEl.innerHTML = '';
+                if (querySnapshot.empty) {
+                    submissionsListEl.innerHTML = '<p class="text-gray-500 text-center">No submissions yet.</p>';
+                    return;
+                }
+
+                querySnapshot.forEach((doc) => {
+                    const submission = doc.data();
+                    const submissionEl = document.createElement('div');
+                    submissionEl.className = 'p-4 bg-gray-100 rounded-lg shadow-sm transition-all duration-200 ease-in-out hover:bg-gray-200';
+                    submissionEl.innerHTML = `
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-sm font-semibold px-2 py-1 rounded-full text-white ${submission.type === 'Bug Report' ? 'bg-red-500' : 'bg-green-500'}">
+                                ${submission.type}
+                            </span>
+                            <span class="text-xs text-gray-500">
+                                ${submission.timestamp ? new Date(submission.timestamp.toDate()).toLocaleString() : 'Just now'}
+                            </span>
+                        </div>
+                        ${submission.url ? `<p class="text-xs text-gray-600 mb-2 truncate">URL: <a href="${submission.url}" target="_blank" class="text-blue-500 hover:underline">${submission.url}</a></p>` : ''}
+                        <p class="text-sm text-gray-800">${submission.description}</p>
+                        <p class="text-xs text-gray-500 mt-2 text-right">Submitted by: <span class="font-mono">${submission.submittedBy}</span></p>
+                    `;
+                    submissionsListEl.appendChild(submissionEl);
+                });
+            }, (error) => {
+                console.error("Error fetching documents:", error);
+                submissionsListEl.innerHTML = '<p class="text-red-500 text-center">Failed to load submissions.</p>';
+            });
+        };
+
+        window.onload = initFirebase;
+    </script>
+</body>
+</html>
