@@ -4,9 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feedback Hub</title>
+    <!-- Use Inter font from Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -35,14 +37,17 @@
 </head>
 <body class="p-4 sm:p-8 flex items-center justify-center min-h-screen">
     <div class="max-w-4xl w-full">
+        <!-- Main Application Card -->
         <div class="container-card">
             <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-2 text-center">Feedback Hub</h1>
             <p class="text-lg text-gray-600 mb-8 text-center">Submit a bug report or a feature request.</p>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- Submission Form -->
                 <div>
                     <h2 class="text-2xl font-semibold text-gray-800 mb-4">Submit a Request</h2>
                     <form id="feedbackForm" class="space-y-4">
+                        <!-- User ID Display -->
                         <div class="p-4 bg-blue-50 text-blue-800 rounded-lg text-sm">
                             <p>Your unique ID: <span id="userIdDisplay" class="font-mono font-bold text-gray-700 break-all">Loading...</span></p>
                             <p class="text-gray-600 mt-1">Share this with others to identify your submissions.</p>
@@ -72,9 +77,11 @@
                     <div id="statusMessage" class="message-box hidden"></div>
                 </div>
 
+                <!-- Live Feed of Submissions -->
                 <div>
                     <h2 class="text-2xl font-semibold text-gray-800 mb-4">Live Submissions</h2>
                     <div id="submissionsList" class="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+                        <!-- Submissions will be dynamically inserted here -->
                         <p class="text-gray-500 text-center">Loading submissions...</p>
                     </div>
                 </div>
@@ -82,10 +89,12 @@
         </div>
     </div>
 
+    <!-- Firebase SDK Imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, updateDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // IMPORTED deleteDoc
+        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, updateDoc, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE
         // Replace this entire section with the code you copied from the Firebase console
@@ -128,7 +137,6 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // Sign in anonymously for public access
                 await signInAnonymously(auth);
                 
                 userId = auth.currentUser.uid;
@@ -138,11 +146,15 @@
                 const adminDocRef = doc(db, 'admins', userId);
                 const adminDoc = await getDoc(adminDocRef);
                 isAdmin = adminDoc.exists();
+                console.log("Is Admin:", isAdmin); // Log the admin status for debugging
 
-                // Listen for real-time updates to the submissions
                 setupRealtimeListener();
 
                 document.getElementById('feedbackForm').addEventListener('submit', handleFormSubmit);
+
+                // Refactored: Use event delegation for all admin controls
+                submissionsListEl.addEventListener('click', handleAdminControlsClick);
+                submissionsListEl.addEventListener('change', handleAdminControlsChange);
 
             } catch (error) {
                 console.error("Firebase initialization or authentication failed:", error);
@@ -242,10 +254,14 @@
                                 </div>
                                 <div>
                                     <textarea placeholder="Write a reply..." class="reply-textarea mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2"></textarea>
-                                    <button class="reply-btn mt-2 w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 ease-in-out" data-doc-id="${docId}">
+                                    <button class="reply-btn mt-2 w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 ease-in-out">
                                         Reply
                                     </button>
                                 </div>
+                                <!-- New Delete Button Added -->
+                                <button class="delete-btn w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 ease-in-out mt-4" data-doc-id="${docId}">
+                                    Delete
+                                </button>
                             </div>
                         `;
                     }
@@ -269,45 +285,80 @@
                     `;
                     submissionsListEl.appendChild(submissionEl);
                 });
-
-                // Attach event listeners for admin controls
-                if (isAdmin) {
-                    document.querySelectorAll('.status-dropdown').forEach(dropdown => {
-                        dropdown.addEventListener('change', async (event) => {
-                            const docId = event.target.dataset.docId;
-                            const newStatus = event.target.value;
-                            const docRef = doc(db, 'reports', docId);
-                            await updateDoc(docRef, { status: newStatus });
-                        });
-                    });
-                    document.querySelectorAll('.reply-btn').forEach(button => {
-                        button.addEventListener('click', async (event) => {
-                            const docId = event.target.dataset.docId;
-                            const textarea = event.target.previousElementSibling;
-                            const replyText = textarea.value;
-                            if (replyText.trim() === '') return;
-
-                            const docRef = doc(db, 'reports', docId);
-                            const newReply = {
-                                text: replyText,
-                                timestamp: serverTimestamp()
-                            };
-
-                            // Use an asynchronous function to get the document and then update
-                            const docSnapshot = await getDoc(docRef);
-                            const existingReplies = docSnapshot.data().replies || [];
-                            
-                            await updateDoc(docRef, {
-                                replies: [...existingReplies, newReply]
-                            });
-                            textarea.value = '';
-                        });
-                    });
-                }
             }, (error) => {
                 console.error("Error fetching documents:", error);
                 submissionsListEl.innerHTML = '<p class="text-red-500 text-center">Failed to load submissions.</p>';
             });
+        };
+
+        const handleAdminControlsChange = async (event) => {
+            if (!isAdmin) return; 
+            const dropdown = event.target.closest('.status-dropdown');
+            if (dropdown) {
+                try {
+                    const docId = dropdown.dataset.docId;
+                    const newStatus = dropdown.value;
+                    const docRef = doc(db, 'reports', docId);
+                    await updateDoc(docRef, { status: newStatus });
+                } catch (error) {
+                    console.error("Failed to update status:", error);
+                }
+            }
+        };
+
+        const handleAdminControlsClick = async (event) => {
+            if (!isAdmin) return;
+            const button = event.target.closest('button');
+            if (!button) return;
+
+            const docId = button.closest('.admin-controls').querySelector('.delete-btn, .reply-btn, .status-dropdown').dataset.docId;
+            const docRef = doc(db, 'reports', docId);
+
+            // Handle delete button
+            if (button.classList.contains('delete-btn')) {
+                // First click: Change text to confirm
+                if (button.textContent === "Delete") {
+                    button.textContent = "Confirm Delete";
+                    button.classList.remove('bg-red-600', 'hover:bg-red-700');
+                    button.classList.add('bg-orange-500', 'hover:bg-orange-600');
+                    setTimeout(() => {
+                        if (button.textContent === "Confirm Delete") {
+                            button.textContent = "Delete";
+                            button.classList.remove('bg-orange-500', 'hover:bg-orange-600');
+                            button.classList.add('bg-red-600', 'hover:bg-red-700');
+                        }
+                    }, 3000); // Revert after 3 seconds if not clicked again
+                } 
+                // Second click: Delete the document
+                else if (button.textContent === "Confirm Delete") {
+                    try {
+                        await deleteDoc(docRef);
+                        showStatus("Request successfully deleted.");
+                    } catch (error) {
+                        console.error("Failed to delete document:", error);
+                        showStatus("Failed to delete request.", false);
+                    }
+                }
+            }
+            
+            // Handle reply button
+            if (button.classList.contains('reply-btn')) {
+                try {
+                    const textarea = button.previousElementSibling;
+                    const replyText = textarea.value;
+                    if (replyText.trim() === '') return;
+
+                    const docSnapshot = await getDoc(docRef);
+                    const existingReplies = docSnapshot.data().replies || [];
+                    
+                    await updateDoc(docRef, {
+                        replies: [...existingReplies, { text: replyText, timestamp: serverTimestamp() }]
+                    });
+                    textarea.value = '';
+                } catch (error) {
+                    console.error("Failed to post reply:", error);
+                }
+            }
         };
 
         window.onload = initFirebase;
