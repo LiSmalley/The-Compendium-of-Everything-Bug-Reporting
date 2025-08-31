@@ -4,11 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feedback Hub</title>
-    <!-- Use Inter font from Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -27,21 +25,24 @@
             border-radius: 0.75rem;
             font-weight: 500;
         }
+        .admin-controls {
+            background-color: #e5e7eb;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            margin-top: 1rem;
+        }
     </style>
 </head>
 <body class="p-4 sm:p-8 flex items-center justify-center min-h-screen">
     <div class="max-w-4xl w-full">
-        <!-- Main Application Card -->
         <div class="container-card">
             <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-2 text-center">Feedback Hub</h1>
             <p class="text-lg text-gray-600 mb-8 text-center">Submit a bug report or a feature request.</p>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <!-- Submission Form -->
                 <div>
                     <h2 class="text-2xl font-semibold text-gray-800 mb-4">Submit a Request</h2>
                     <form id="feedbackForm" class="space-y-4">
-                        <!-- User ID Display -->
                         <div class="p-4 bg-blue-50 text-blue-800 rounded-lg text-sm">
                             <p>Your unique ID: <span id="userIdDisplay" class="font-mono font-bold text-gray-700 break-all">Loading...</span></p>
                             <p class="text-gray-600 mt-1">Share this with others to identify your submissions.</p>
@@ -71,11 +72,9 @@
                     <div id="statusMessage" class="message-box hidden"></div>
                 </div>
 
-                <!-- Live Feed of Submissions -->
                 <div>
                     <h2 class="text-2xl font-semibold text-gray-800 mb-4">Live Submissions</h2>
                     <div id="submissionsList" class="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-                        <!-- Submissions will be dynamically inserted here -->
                         <p class="text-gray-500 text-center">Loading submissions...</p>
                     </div>
                 </div>
@@ -83,11 +82,10 @@
         </div>
     </div>
 
-    <!-- Firebase SDK Imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, updateDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE
         // Replace this entire section with the code you copied from the Firebase console
@@ -102,11 +100,11 @@
         };
         // End of Firebase configuration
 
-        // Initialize Firebase services
         let app;
         let auth;
         let db;
         let userId;
+        let isAdmin = false;
 
         const statusMessageEl = document.getElementById('statusMessage');
         const userIdDisplayEl = document.getElementById('userIdDisplay');
@@ -136,6 +134,11 @@
                 userId = auth.currentUser.uid;
                 userIdDisplayEl.textContent = userId;
 
+                // Check if the current user is an admin
+                const adminDocRef = doc(db, 'admins', userId);
+                const adminDoc = await getDoc(adminDocRef);
+                isAdmin = adminDoc.exists();
+
                 // Listen for real-time updates to the submissions
                 setupRealtimeListener();
 
@@ -157,6 +160,9 @@
                 description: formData.get('description'),
                 submittedBy: userId,
                 timestamp: serverTimestamp(),
+                // Initialize status for new submissions
+                status: "Open",
+                replies: []
             };
 
             try {
@@ -181,25 +187,123 @@
                     return;
                 }
 
-                querySnapshot.forEach((doc) => {
-                    const submission = doc.data();
+                querySnapshot.forEach((docSnapshot) => {
+                    const submission = docSnapshot.data();
+                    const docId = docSnapshot.id; // Get the document ID
                     const submissionEl = document.createElement('div');
                     submissionEl.className = 'p-4 bg-gray-100 rounded-lg shadow-sm transition-all duration-200 ease-in-out hover:bg-gray-200';
+
+                    let statusColor = '';
+                    switch (submission.status) {
+                        case 'Open':
+                            statusColor = 'bg-gray-500';
+                            break;
+                        case 'In Progress':
+                            statusColor = 'bg-blue-500';
+                            break;
+                        case 'Fixed':
+                            statusColor = 'bg-green-500';
+                            break;
+                        default:
+                            statusColor = 'bg-gray-500';
+                    }
+
+                    // Build the replies HTML
+                    let repliesHtml = '';
+                    if (submission.replies && submission.replies.length > 0) {
+                        repliesHtml = `
+                            <div class="mt-4 border-t border-gray-300 pt-2">
+                                <h4 class="text-sm font-semibold text-gray-700">Replies:</h4>
+                                ${submission.replies.map(reply => `
+                                    <div class="mt-1 p-2 bg-gray-200 rounded-lg">
+                                        <p class="text-xs text-gray-800">${reply.text}</p>
+                                        <p class="text-xs text-gray-500 text-right">
+                                            - Admin at ${reply.timestamp ? new Date(reply.timestamp.toDate()).toLocaleString() : 'Just now'}
+                                        </p>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
+                    }
+
+                    // Admin controls
+                    let adminControlsHtml = '';
+                    if (isAdmin) {
+                        adminControlsHtml = `
+                            <div class="admin-controls mt-4 space-y-2">
+                                <h4 class="text-sm font-semibold text-gray-700">Admin Actions</h4>
+                                <div class="flex items-center space-x-2">
+                                    <label class="text-xs text-gray-700">Status:</label>
+                                    <select class="status-dropdown mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2" data-doc-id="${docId}">
+                                        <option value="Open" ${submission.status === 'Open' ? 'selected' : ''}>Open</option>
+                                        <option value="In Progress" ${submission.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                                        <option value="Fixed" ${submission.status === 'Fixed' ? 'selected' : ''}>Fixed</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <textarea placeholder="Write a reply..." class="reply-textarea mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2"></textarea>
+                                    <button class="reply-btn mt-2 w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 ease-in-out" data-doc-id="${docId}">
+                                        Reply
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }
+
+
                     submissionEl.innerHTML = `
                         <div class="flex justify-between items-center mb-1">
-                            <span class="text-sm font-semibold px-2 py-1 rounded-full text-white ${submission.type === 'Bug Report' ? 'bg-red-500' : 'bg-green-500'}">
-                                ${submission.type}
+                            <span class="text-sm font-semibold px-2 py-1 rounded-full text-white ${statusColor}">
+                                ${submission.status}
                             </span>
                             <span class="text-xs text-gray-500">
                                 ${submission.timestamp ? new Date(submission.timestamp.toDate()).toLocaleString() : 'Just now'}
                             </span>
                         </div>
+                        <p class="text-sm font-semibold text-gray-800 mb-1">${submission.type}</p>
                         ${submission.url ? `<p class="text-xs text-gray-600 mb-2 truncate">URL: <a href="${submission.url}" target="_blank" class="text-blue-500 hover:underline">${submission.url}</a></p>` : ''}
                         <p class="text-sm text-gray-800">${submission.description}</p>
                         <p class="text-xs text-gray-500 mt-2 text-right">Submitted by: <span class="font-mono">${submission.submittedBy}</span></p>
+                        ${repliesHtml}
+                        ${adminControlsHtml}
                     `;
                     submissionsListEl.appendChild(submissionEl);
                 });
+
+                // Attach event listeners for admin controls
+                if (isAdmin) {
+                    document.querySelectorAll('.status-dropdown').forEach(dropdown => {
+                        dropdown.addEventListener('change', async (event) => {
+                            const docId = event.target.dataset.docId;
+                            const newStatus = event.target.value;
+                            const docRef = doc(db, 'reports', docId);
+                            await updateDoc(docRef, { status: newStatus });
+                        });
+                    });
+                    document.querySelectorAll('.reply-btn').forEach(button => {
+                        button.addEventListener('click', async (event) => {
+                            const docId = event.target.dataset.docId;
+                            const textarea = event.target.previousElementSibling;
+                            const replyText = textarea.value;
+                            if (replyText.trim() === '') return;
+
+                            const docRef = doc(db, 'reports', docId);
+                            const newReply = {
+                                text: replyText,
+                                timestamp: serverTimestamp()
+                            };
+
+                            // Use an asynchronous function to get the document and then update
+                            const docSnapshot = await getDoc(docRef);
+                            const existingReplies = docSnapshot.data().replies || [];
+                            
+                            await updateDoc(docRef, {
+                                replies: [...existingReplies, newReply]
+                            });
+                            textarea.value = '';
+                        });
+                    });
+                }
             }, (error) => {
                 console.error("Error fetching documents:", error);
                 submissionsListEl.innerHTML = '<p class="text-red-500 text-center">Failed to load submissions.</p>';
