@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feedback Hub</title>
-   <link rel="icon" type="image/png" href="https://cdn.compendiumofeverything.org/images/Compendium_Bug_Report_Logo.png">
+    <link rel="icon" type="image/png" href="https://cdn.compendiumofeverything.org/images/Compendium_Bug_Report_Logo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -37,10 +37,10 @@
 <body class="p-4 sm:p-8 flex items-center justify-center min-h-screen">
     <div class="max-w-4xl w-full">
         <div class="container-card">
-            <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-2 text-center">Feedback Hub</h1>
-            <p class="text-lg text-gray-600 mb-8 text-center">Submit a bug report or a feature request.</p>
+            <h1 id="mainTitle" class="text-3xl sm:text-4xl font-bold text-gray-900 mb-2 text-center">Feedback Hub</h1>
+            <p id="pageDescription" class="text-lg text-gray-600 mb-8 text-center">Submit a bug report or a feature request.</p>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div id="mainContent" class="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div>
                     <h2 class="text-2xl font-semibold text-gray-800 mb-4">Submit a Request</h2>
                     <form id="feedbackForm" class="space-y-4">
@@ -49,18 +49,20 @@
                             <p class="text-gray-600 mt-1">Share this with others to identify your submissions.</p>
                         </div>
                         <div>
+                            <label for="reporterName" class="block text-sm font-medium text-gray-700">Your Name (optional)</label>
+                            <input type="text" id="reporterName" name="reporterName" placeholder="e.g., Jane Doe" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-gray-50 focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                        <div>
                             <label for="type" class="block text-sm font-medium text-gray-700">Type of Request</label>
                             <select id="type" name="type" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-gray-50 focus:border-blue-500 focus:ring-blue-500">
                                 <option value="Bug Report">Bug Report</option>
                                 <option value="Feature Request">Feature Request</option>
                             </select>
                         </div>
-
                         <div>
                             <label for="url" class="block text-sm font-medium text-gray-700">Article URL (optional)</label>
                             <input type="url" id="url" name="url" placeholder="https://compendiumofeverything.org/article-title" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-gray-50 focus:border-blue-500 focus:ring-blue-500">
                         </div>
-
                         <div>
                             <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
                             <textarea id="description" name="description" required rows="5" placeholder="Please describe the issue or feature in detail..." class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-gray-50 focus:border-blue-500 focus:ring-blue-500"></textarea>
@@ -74,12 +76,20 @@
                 </div>
 
                 <div>
-                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Live Submissions</h2>
+                    <h2 id="submissionsTitle" class="text-2xl font-semibold text-gray-800 mb-4">Live Submissions</h2>
                     <div id="submissionsList" class="space-y-4 max-h-[600px] overflow-y-auto pr-2">
                         <p class="text-gray-500 text-center">Loading submissions...</p>
                     </div>
                 </div>
             </div>
+
+            <div id="singleReportView" class="hidden">
+                <button id="backButton" class="mb-4 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors duration-200">
+                    ← Back to All Submissions
+                </button>
+                <div id="singleReportContainer" class="space-y-4"></div>
+            </div>
+
         </div>
     </div>
 
@@ -105,7 +115,14 @@
         let db;
         let userId;
         let isAdmin = false;
+        let adminName = ''; // New variable to hold the admin's name
 
+        const mainTitleEl = document.getElementById('mainTitle');
+        const pageDescriptionEl = document.getElementById('pageDescription');
+        const mainContentEl = document.getElementById('mainContent');
+        const singleReportViewEl = document.getElementById('singleReportView');
+        const singleReportContainerEl = document.getElementById('singleReportContainer');
+        const backButtonEl = document.getElementById('backButton');
         const statusMessageEl = document.getElementById('statusMessage');
         const userIdDisplayEl = document.getElementById('userIdDisplay');
         const submissionsListEl = document.getElementById('submissionsList');
@@ -118,7 +135,7 @@
                 statusMessageEl.classList.remove('bg-red-100', 'text-red-800');
                 statusMessageEl.classList.add('bg-green-100', 'text-green-800');
             } else {
-                statusMessageEl.classList.remove('bg-green-100', 'text-green-800');
+                statusMessageEl.classList.remove('bg-green-100', 'text-red-800');
                 statusMessageEl.classList.add('bg-red-100', 'text-red-800');
             }
         };
@@ -134,21 +151,47 @@
                 userId = auth.currentUser.uid;
                 userIdDisplayEl.textContent = userId;
 
+                // Check for admin status and name
                 const adminDocRef = doc(db, 'admins', userId);
                 const adminDoc = await getDoc(adminDocRef);
                 isAdmin = adminDoc.exists();
-                console.log("Is Admin:", isAdmin);
+                if (isAdmin) {
+                    adminName = adminDoc.data().name || 'Admin';
+                    mainTitleEl.textContent = "Feedback Admin Console";
+                    pageDescriptionEl.textContent = "Manage bug reports and feature requests.";
+                }
 
-                setupRealtimeListener();
+                // Attach event listeners for admin controls
+                submissionsListEl.addEventListener('click', handleAdminControlsClick);
+                submissionsListEl.addEventListener('change', handleAdminControlsChange);
+                singleReportContainerEl.addEventListener('click', handleAdminControlsClick);
+                singleReportContainerEl.addEventListener('change', handleAdminControlsChange);
+
+                // Handle the URL parameter logic
+                checkUrlForReportId();
 
                 feedbackFormEl.addEventListener('submit', handleFormSubmit);
 
-                submissionsListEl.addEventListener('click', handleAdminControlsClick);
-                submissionsListEl.addEventListener('change', handleAdminControlsChange);
-
+                backButtonEl.addEventListener('click', () => {
+                    window.location.href = window.location.origin + window.location.pathname;
+                });
             } catch (error) {
                 console.error("Firebase initialization or authentication failed:", error);
                 showStatus(`Failed to initialize application. Error: ${error.message}`, false);
+            }
+        };
+
+        const checkUrlForReportId = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const reportId = urlParams.get('reportId');
+            if (reportId) {
+                mainContentEl.classList.add('hidden');
+                singleReportViewEl.classList.remove('hidden');
+                setupSingleReportListener(reportId);
+            } else {
+                mainContentEl.classList.remove('hidden');
+                singleReportViewEl.classList.add('hidden');
+                setupRealtimeListener();
             }
         };
 
@@ -156,11 +199,14 @@
             event.preventDefault();
             const form = event.target;
             const formData = new FormData(form);
+            const reporterName = formData.get('reporterName').trim();
+
             const data = {
                 type: formData.get('type'),
                 url: formData.get('url'),
                 description: formData.get('description'),
                 submittedBy: userId,
+                submittedName: reporterName || userId,
                 timestamp: serverTimestamp(),
                 status: "Open",
                 replies: []
@@ -168,8 +214,8 @@
 
             try {
                 const collectionPath = `reports`;
-                await addDoc(collection(db, collectionPath), data);
-                showStatus("Thank you! Your request has been submitted successfully.");
+                const docRef = await addDoc(collection(db, collectionPath), data);
+                showStatus(`Thank you! Your request has been submitted successfully. Your report ID is: ${docRef.id}`);
                 form.reset();
             } catch (error) {
                 console.error("Error submitting request:", error);
@@ -177,9 +223,110 @@
             }
         };
         
+        const renderSubmission = (docSnapshot, containerEl) => {
+            const submission = docSnapshot.data();
+            const docId = docSnapshot.id;
+            const submissionEl = document.createElement('div');
+            submissionEl.className = 'p-4 bg-gray-100 rounded-lg shadow-sm transition-all duration-200 ease-in-out hover:bg-gray-200';
+
+            let statusColor = '';
+            switch (submission.status) {
+                case 'Open':
+                    statusColor = 'bg-gray-500';
+                    break;
+                case 'In Progress':
+                    statusColor = 'bg-blue-500';
+                    break;
+                case 'Fixed':
+                case 'Added':
+                    statusColor = 'bg-green-500';
+                    break;
+                default:
+                    statusColor = 'bg-gray-500';
+            }
+
+            let repliesHtml = '';
+            if (submission.replies && submission.replies.length > 0) {
+                repliesHtml = `
+                    <div class="mt-4 border-t border-gray-300 pt-2">
+                        <h4 class="text-sm font-semibold text-gray-700">Replies:</h4>
+                        ${submission.replies.map(reply => `
+                            <div class="mt-1 p-2 bg-gray-200 rounded-lg">
+                                <p class="text-xs text-gray-800">${reply.text}</p>
+                                <p class="text-xs text-gray-500 text-right">
+                                    - Replied by <span class="font-bold">${reply.byName || 'Admin'}</span> at ${reply.timestamp ? new Date(reply.timestamp.toDate()).toLocaleString() : 'Just now'}
+                                </p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            let adminControlsHtml = '';
+            if (isAdmin) {
+                const adminReplyNameInput = `<input type="text" placeholder="Your name (optional)" class="admin-reply-name-input mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2" value="${adminName}">`;
+                
+                let statusOptionsHtml = '';
+                if (submission.type === 'Bug Report') {
+                    statusOptionsHtml = `
+                        <option value="Open" ${submission.status === 'Open' ? 'selected' : ''}>Open</option>
+                        <option value="In Progress" ${submission.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                        <option value="Fixed" ${submission.status === 'Fixed' ? 'selected' : ''}>Fixed</option>
+                    `;
+                } else if (submission.type === 'Feature Request') {
+                    statusOptionsHtml = `
+                        <option value="Open" ${submission.status === 'Open' ? 'selected' : ''}>Open</option>
+                        <option value="In Progress" ${submission.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                        <option value="Added" ${submission.status === 'Added' ? 'selected' : ''}>Added</option>
+                    `;
+                }
+
+                adminControlsHtml = `
+                    <div class="admin-controls mt-4 space-y-2" data-doc-id="${docId}">
+                        <h4 class="text-sm font-semibold text-gray-700">Admin Actions</h4>
+                        <div class="flex items-center space-x-2">
+                            <label class="text-xs text-gray-700">Status:</label>
+                            <select class="status-dropdown mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
+                                ${statusOptionsHtml}
+                            </select>
+                        </div>
+                        <div>
+                            ${adminReplyNameInput}
+                            <textarea placeholder="Write a reply..." class="reply-textarea mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2"></textarea>
+                            <button class="reply-btn mt-2 w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 ease-in-out">
+                                Reply
+                            </button>
+                        </div>
+                        <button class="delete-btn w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 ease-in-out mt-4">
+                            Delete
+                        </button>
+                    </div>
+                `;
+            }
+
+            const reporterDisplay = `<a href="?reportId=${docId}" class="font-bold hover:underline">${submission.submittedName || submission.submittedBy}</a>`;
+
+            submissionEl.innerHTML = `
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-sm font-semibold px-2 py-1 rounded-full text-white ${statusColor}">
+                        ${submission.status}
+                    </span>
+                    <span class="text-xs text-gray-500">
+                        ${submission.timestamp ? new Date(submission.timestamp.toDate()).toLocaleString() : 'Just now'}
+                    </span>
+                </div>
+                <p class="text-sm font-semibold text-gray-800 mb-1">${submission.type}</p>
+                ${submission.url ? `<p class="text-xs text-gray-600 mb-2 truncate">URL: <a href="${submission.url}" target="_blank" class="text-blue-500 hover:underline">${submission.url}</a></p>` : ''}
+                <p class="text-sm text-gray-800">${submission.description}</p>
+                <p class="text-xs text-gray-500 mt-2 text-right">Submitted by: ${reporterDisplay}</p>
+                ${repliesHtml}
+                ${adminControlsHtml}
+            `;
+            containerEl.appendChild(submissionEl);
+        };
+
         const setupRealtimeListener = () => {
-            const collectionPath = `reports`;
-            const q = query(collection(db, collectionPath));
+            const q = query(collection(db, `reports`));
             
             onSnapshot(q, (querySnapshot) => {
                 submissionsListEl.innerHTML = '';
@@ -189,90 +336,26 @@
                 }
 
                 querySnapshot.forEach((docSnapshot) => {
-                    const submission = docSnapshot.data();
-                    const docId = docSnapshot.id;
-                    const submissionEl = document.createElement('div');
-                    submissionEl.className = 'p-4 bg-gray-100 rounded-lg shadow-sm transition-all duration-200 ease-in-out hover:bg-gray-200';
-
-                    let statusColor = '';
-                    switch (submission.status) {
-                        case 'Open':
-                            statusColor = 'bg-gray-500';
-                            break;
-                        case 'In Progress':
-                            statusColor = 'bg-blue-500';
-                            break;
-                        case 'Fixed':
-                            statusColor = 'bg-green-500';
-                            break;
-                        default:
-                            statusColor = 'bg-gray-500';
-                    }
-
-                    let repliesHtml = '';
-                    if (submission.replies && submission.replies.length > 0) {
-                        repliesHtml = `
-                            <div class="mt-4 border-t border-gray-300 pt-2">
-                                <h4 class="text-sm font-semibold text-gray-700">Replies:</h4>
-                                ${submission.replies.map(reply => `
-                                    <div class="mt-1 p-2 bg-gray-200 rounded-lg">
-                                        <p class="text-xs text-gray-800">${reply.text}</p>
-                                        <p class="text-xs text-gray-500 text-right">
-                                            - Replied by ${reply.by ? (reply.by === userId ? 'You' : 'Admin') : 'Admin'} at ${reply.timestamp ? new Date(reply.timestamp.toDate()).toLocaleString() : 'Just now'}
-                                        </p>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        `;
-                    }
-
-                    let adminControlsHtml = '';
-                    if (isAdmin) {
-                        adminControlsHtml = `
-                            <div class="admin-controls mt-4 space-y-2" data-doc-id="${docId}">
-                                <h4 class="text-sm font-semibold text-gray-700">Admin Actions</h4>
-                                <div class="flex items-center space-x-2">
-                                    <label class="text-xs text-gray-700">Status:</label>
-                                    <select class="status-dropdown mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
-                                        <option value="Open" ${submission.status === 'Open' ? 'selected' : ''}>Open</option>
-                                        <option value="In Progress" ${submission.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
-                                        <option value="Fixed" ${submission.status === 'Fixed' ? 'selected' : ''}>Fixed</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <textarea placeholder="Write a reply..." class="reply-textarea mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2"></textarea>
-                                    <button class="reply-btn mt-2 w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 ease-in-out">
-                                        Reply
-                                    </button>
-                                </div>
-                                <button class="delete-btn w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 ease-in-out mt-4">
-                                    Delete
-                                </button>
-                            </div>
-                        `;
-                    }
-
-                    submissionEl.innerHTML = `
-                        <div class="flex justify-between items-center mb-1">
-                            <span class="text-sm font-semibold px-2 py-1 rounded-full text-white ${statusColor}">
-                                ${submission.status}
-                            </span>
-                            <span class="text-xs text-gray-500">
-                                ${submission.timestamp ? new Date(submission.timestamp.toDate()).toLocaleString() : 'Just now'}
-                            </span>
-                        </div>
-                        <p class="text-sm font-semibold text-gray-800 mb-1">${submission.type}</p>
-                        ${submission.url ? `<p class="text-xs text-gray-600 mb-2 truncate">URL: <a href="${submission.url}" target="_blank" class="text-blue-500 hover:underline">${submission.url}</a></p>` : ''}
-                        <p class="text-sm text-gray-800">${submission.description}</p>
-                        <p class="text-xs text-gray-500 mt-2 text-right">Submitted by: <span class="font-mono">${submission.submittedBy}</span></p>
-                        ${repliesHtml}
-                        ${adminControlsHtml}
-                    `;
-                    submissionsListEl.appendChild(submissionEl);
+                    renderSubmission(docSnapshot, submissionsListEl);
                 });
             }, (error) => {
                 console.error("Error fetching documents:", error);
                 submissionsListEl.innerHTML = '<p class="text-red-500 text-center">Failed to load submissions.</p>';
+            });
+        };
+
+        const setupSingleReportListener = (reportId) => {
+            const docRef = doc(db, 'reports', reportId);
+            onSnapshot(docRef, (docSnapshot) => {
+                singleReportContainerEl.innerHTML = '';
+                if (docSnapshot.exists()) {
+                    renderSubmission(docSnapshot, singleReportContainerEl);
+                } else {
+                    singleReportContainerEl.innerHTML = `<p class="text-gray-500 text-center">Report not found.</p>`;
+                }
+            }, (error) => {
+                console.error("Error fetching document:", error);
+                singleReportContainerEl.innerHTML = '<p class="text-red-500 text-center">Failed to load report.</p>';
             });
         };
 
@@ -289,6 +372,11 @@
                     console.error("Failed to update status:", error);
                 }
             }
+        };
+
+        const getAdminReplyName = (adminControlsDiv) => {
+            const nameInput = adminControlsDiv.querySelector('.admin-reply-name-input');
+            return nameInput.value.trim() || 'Admin';
         };
 
         const handleAdminControlsClick = async (event) => {
@@ -310,7 +398,7 @@
                         if (button.textContent.trim() === "Confirm Delete") {
                             button.textContent = "Delete";
                             button.classList.remove('bg-orange-500', 'hover:bg-orange-600');
-                            button.classList.add('bg-red-600', 'hover:bg-red-700');
+                            button.classList.add('bg-red-600', 'hover:hover:bg-red-700');
                         }
                     }, 3000);
                 } else if (button.textContent.trim() === "Confirm Delete") {
@@ -330,12 +418,12 @@
                     const replyText = textarea.value;
                     if (replyText.trim() === '') return;
 
-                    // FIX: Use new Date() for a client-side timestamp to avoid Firestore error
                     await updateDoc(docRef, {
                         replies: arrayUnion({
                             text: replyText,
                             timestamp: new Date(),
-                            by: userId
+                            by: userId,
+                            byName: getAdminReplyName(adminControlsDiv)
                         })
                     });
                     textarea.value = '';
