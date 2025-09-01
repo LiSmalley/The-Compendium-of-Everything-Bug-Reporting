@@ -4,11 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feedback Hub</title>
-    <!-- Use Inter font from Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -37,17 +35,14 @@
 </head>
 <body class="p-4 sm:p-8 flex items-center justify-center min-h-screen">
     <div class="max-w-4xl w-full">
-        <!-- Main Application Card -->
         <div class="container-card">
             <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-2 text-center">Feedback Hub</h1>
             <p class="text-lg text-gray-600 mb-8 text-center">Submit a bug report or a feature request.</p>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <!-- Submission Form -->
                 <div>
                     <h2 class="text-2xl font-semibold text-gray-800 mb-4">Submit a Request</h2>
                     <form id="feedbackForm" class="space-y-4">
-                        <!-- User ID Display -->
                         <div class="p-4 bg-blue-50 text-blue-800 rounded-lg text-sm">
                             <p>Your unique ID: <span id="userIdDisplay" class="font-mono font-bold text-gray-700 break-all">Loading...</span></p>
                             <p class="text-gray-600 mt-1">Share this with others to identify your submissions.</p>
@@ -66,6 +61,11 @@
                         </div>
 
                         <div>
+                            <label for="imageUpload" class="block text-sm font-medium text-gray-700">Attach Image (optional)</label>
+                            <input type="file" id="imageUpload" name="imageUpload" accept="image/*" class="mt-1 block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none">
+                        </div>
+
+                        <div>
                             <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
                             <textarea id="description" name="description" required rows="5" placeholder="Please describe the issue or feature in detail..." class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-gray-50 focus:border-blue-500 focus:ring-blue-500"></textarea>
                         </div>
@@ -77,11 +77,9 @@
                     <div id="statusMessage" class="message-box hidden"></div>
                 </div>
 
-                <!-- Live Feed of Submissions -->
                 <div>
                     <h2 class="text-2xl font-semibold text-gray-800 mb-4">Live Submissions</h2>
                     <div id="submissionsList" class="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-                        <!-- Submissions will be dynamically inserted here -->
                         <p class="text-gray-500 text-center">Loading submissions...</p>
                     </div>
                 </div>
@@ -89,15 +87,14 @@
         </div>
     </div>
 
-    <!-- Firebase SDK Imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // IMPORTED deleteDoc
         import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, updateDoc, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // NEW: Firebase Storage Import
+        import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
         // IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE
-        // Replace this entire section with the code you copied from the Firebase console
         const firebaseConfig = {
           apiKey: "AIzaSyCtCLIqhpcWgQwhDtzQRx2DXngNmwytJWk",
           authDomain: "compendium-of-everything-dev.firebaseapp.com",
@@ -112,6 +109,7 @@
         let app;
         let auth;
         let db;
+        let storage; // NEW: Storage variable
         let userId;
         let isAdmin = false;
 
@@ -136,6 +134,7 @@
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
+                storage = getStorage(app); // NEW: Initialize Storage
 
                 await signInAnonymously(auth);
                 
@@ -146,13 +145,12 @@
                 const adminDocRef = doc(db, 'admins', userId);
                 const adminDoc = await getDoc(adminDocRef);
                 isAdmin = adminDoc.exists();
-                console.log("Is Admin:", isAdmin); // Log the admin status for debugging
+                console.log("Is Admin:", isAdmin);
 
                 setupRealtimeListener();
 
                 document.getElementById('feedbackForm').addEventListener('submit', handleFormSubmit);
 
-                // Refactored: Use event delegation for all admin controls
                 submissionsListEl.addEventListener('click', handleAdminControlsClick);
                 submissionsListEl.addEventListener('change', handleAdminControlsChange);
 
@@ -166,20 +164,35 @@
             event.preventDefault();
             const form = event.target;
             const formData = new FormData(form);
-            const data = {
-                type: formData.get('type'),
-                url: formData.get('url'),
-                description: formData.get('description'),
-                submittedBy: userId,
-                timestamp: serverTimestamp(),
-                // Initialize status for new submissions
-                status: "Open",
-                replies: []
-            };
+            const imageFile = formData.get('imageUpload');
+
+            let imageUrl = null;
+            let submissionData = {};
 
             try {
+                // Step 1: Handle image upload if a file is present
+                if (imageFile && imageFile.name) {
+                    const storageRef = ref(storage, `images/${userId}/${Date.now()}_${imageFile.name}`);
+                    await uploadBytes(storageRef, imageFile);
+                    imageUrl = await getDownloadURL(storageRef);
+                    showStatus("Image uploaded successfully. Submitting your request...");
+                }
+
+                // Step 2: Prepare the data for Firestore
+                submissionData = {
+                    type: formData.get('type'),
+                    url: formData.get('url'),
+                    description: formData.get('description'),
+                    submittedBy: userId,
+                    timestamp: serverTimestamp(),
+                    status: "Open",
+                    replies: [],
+                    imageUrl: imageUrl // Store the image URL here
+                };
+
+                // Step 3: Add the document to Firestore
                 const collectionPath = `reports`;
-                await addDoc(collection(db, collectionPath), data);
+                await addDoc(collection(db, collectionPath), submissionData);
                 showStatus("Thank you! Your request has been submitted successfully.");
                 form.reset();
             } catch (error) {
@@ -201,7 +214,7 @@
 
                 querySnapshot.forEach((docSnapshot) => {
                     const submission = docSnapshot.data();
-                    const docId = docSnapshot.id; // Get the document ID
+                    const docId = docSnapshot.id;
                     const submissionEl = document.createElement('div');
                     submissionEl.className = 'p-4 bg-gray-100 rounded-lg shadow-sm transition-all duration-200 ease-in-out hover:bg-gray-200';
 
@@ -258,14 +271,12 @@
                                         Reply
                                     </button>
                                 </div>
-                                <!-- New Delete Button Added -->
                                 <button class="delete-btn w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 ease-in-out mt-4" data-doc-id="${docId}">
                                     Delete
                                 </button>
                             </div>
                         `;
                     }
-
 
                     submissionEl.innerHTML = `
                         <div class="flex justify-between items-center mb-1">
@@ -278,6 +289,7 @@
                         </div>
                         <p class="text-sm font-semibold text-gray-800 mb-1">${submission.type}</p>
                         ${submission.url ? `<p class="text-xs text-gray-600 mb-2 truncate">URL: <a href="${submission.url}" target="_blank" class="text-blue-500 hover:underline">${submission.url}</a></p>` : ''}
+                        ${submission.imageUrl ? `<a href="${submission.imageUrl}" target="_blank"><img src="${submission.imageUrl}" alt="Attached Image" class="mt-2 rounded-lg max-h-48 object-contain"></a>` : ''}
                         <p class="text-sm text-gray-800">${submission.description}</p>
                         <p class="text-xs text-gray-500 mt-2 text-right">Submitted by: <span class="font-mono">${submission.submittedBy}</span></p>
                         ${repliesHtml}
@@ -311,12 +323,13 @@
             const button = event.target.closest('button');
             if (!button) return;
 
-            const docId = button.closest('.admin-controls').querySelector('.delete-btn, .reply-btn, .status-dropdown').dataset.docId;
+            const submissionEl = button.closest('.admin-controls');
+            if (!submissionEl) return;
+            const docId = submissionEl.querySelector('.status-dropdown').dataset.docId;
             const docRef = doc(db, 'reports', docId);
 
             // Handle delete button
             if (button.classList.contains('delete-btn')) {
-                // First click: Change text to confirm
                 if (button.textContent === "Delete") {
                     button.textContent = "Confirm Delete";
                     button.classList.remove('bg-red-600', 'hover:bg-red-700');
@@ -327,9 +340,8 @@
                             button.classList.remove('bg-orange-500', 'hover:bg-orange-600');
                             button.classList.add('bg-red-600', 'hover:bg-red-700');
                         }
-                    }, 3000); // Revert after 3 seconds if not clicked again
+                    }, 3000);
                 } 
-                // Second click: Delete the document
                 else if (button.textContent === "Confirm Delete") {
                     try {
                         await deleteDoc(docRef);
@@ -344,7 +356,7 @@
             // Handle reply button
             if (button.classList.contains('reply-btn')) {
                 try {
-                    const textarea = button.previousElementSibling;
+                    const textarea = submissionEl.querySelector('.reply-textarea');
                     const replyText = textarea.value;
                     if (replyText.trim() === '') return;
 
