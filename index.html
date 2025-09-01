@@ -142,6 +142,7 @@
 
                 feedbackFormEl.addEventListener('submit', handleFormSubmit);
 
+                // Use event delegation on the parent container
                 submissionsListEl.addEventListener('click', handleAdminControlsClick);
                 submissionsListEl.addEventListener('change', handleAdminControlsChange);
 
@@ -217,7 +218,7 @@
                                     <div class="mt-1 p-2 bg-gray-200 rounded-lg">
                                         <p class="text-xs text-gray-800">${reply.text}</p>
                                         <p class="text-xs text-gray-500 text-right">
-                                            - Admin at ${reply.timestamp ? new Date(reply.timestamp.toDate()).toLocaleString() : 'Just now'}
+                                            - Replied by ${reply.by ? (reply.by === userId ? 'You' : 'Admin') : 'Admin'} at ${reply.timestamp ? new Date(reply.timestamp.toDate()).toLocaleString() : 'Just now'}
                                         </p>
                                     </div>
                                 `).join('')}
@@ -227,6 +228,7 @@
 
                     let adminControlsHtml = '';
                     if (isAdmin) {
+                        // Place the data-doc-id attribute on the parent div
                         adminControlsHtml = `
                             <div class="admin-controls mt-4 space-y-2" data-doc-id="${docId}">
                                 <h4 class="text-sm font-semibold text-gray-700">Admin Actions</h4>
@@ -280,6 +282,7 @@
             const dropdown = event.target.closest('.status-dropdown');
             if (dropdown) {
                 try {
+                    // Correctly get docId from the closest parent with the attribute
                     const docId = dropdown.closest('.admin-controls').dataset.docId;
                     const newStatus = dropdown.value;
                     const docRef = doc(db, 'reports', docId);
@@ -295,6 +298,7 @@
             const button = event.target.closest('button');
             if (!button) return;
 
+            // Correctly find the nearest parent with the data-doc-id attribute
             const adminControlsDiv = button.closest('.admin-controls');
             if (!adminControlsDiv) return;
             const docId = adminControlsDiv.dataset.docId;
@@ -333,7 +337,7 @@
                     const existingReplies = docSnapshot.data().replies || [];
                     
                     await updateDoc(docRef, {
-                        replies: [...existingReplies, { text: replyText, timestamp: serverTimestamp() }]
+                        replies: [...existingReplies, { text: replyText, timestamp: serverTimestamp(), by: userId }]
                     });
                     textarea.value = '';
                 } catch (error) {
