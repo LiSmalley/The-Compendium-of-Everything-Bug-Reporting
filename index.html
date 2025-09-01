@@ -88,7 +88,6 @@
         import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, updateDoc, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE
-        // Replace this entire section with the code you copied from the Firebase console
         const firebaseConfig = {
           apiKey: "AIzaSyCtCLIqhpcWgQwhDtzQRx2DXngNmwytJWk",
           authDomain: "compendium-of-everything-dev.firebaseapp.com",
@@ -109,6 +108,7 @@
         const statusMessageEl = document.getElementById('statusMessage');
         const userIdDisplayEl = document.getElementById('userIdDisplay');
         const submissionsListEl = document.getElementById('submissionsList');
+        const feedbackFormEl = document.getElementById('feedbackForm');
 
         const showStatus = (message, isSuccess = true) => {
             statusMessageEl.textContent = message;
@@ -117,7 +117,7 @@
                 statusMessageEl.classList.remove('bg-red-100', 'text-red-800');
                 statusMessageEl.classList.add('bg-green-100', 'text-green-800');
             } else {
-                statusMessageEl.classList.remove('bg-green-100', 'text-red-800');
+                statusMessageEl.classList.remove('bg-green-100', 'text-green-800');
                 statusMessageEl.classList.add('bg-red-100', 'text-red-800');
             }
         };
@@ -133,17 +133,15 @@
                 userId = auth.currentUser.uid;
                 userIdDisplayEl.textContent = userId;
 
-                // Check if the current user is an admin
                 const adminDocRef = doc(db, 'admins', userId);
                 const adminDoc = await getDoc(adminDocRef);
                 isAdmin = adminDoc.exists();
-                console.log("Is Admin:", isAdmin); // Log the admin status for debugging
+                console.log("Is Admin:", isAdmin);
 
                 setupRealtimeListener();
 
-                document.getElementById('feedbackForm').addEventListener('submit', handleFormSubmit);
+                feedbackFormEl.addEventListener('submit', handleFormSubmit);
 
-                // Refactored: Use event delegation for all admin controls
                 submissionsListEl.addEventListener('click', handleAdminControlsClick);
                 submissionsListEl.addEventListener('change', handleAdminControlsChange);
 
@@ -163,7 +161,6 @@
                 description: formData.get('description'),
                 submittedBy: userId,
                 timestamp: serverTimestamp(),
-                // Initialize status for new submissions
                 status: "Open",
                 replies: []
             };
@@ -192,7 +189,7 @@
 
                 querySnapshot.forEach((docSnapshot) => {
                     const submission = docSnapshot.data();
-                    const docId = docSnapshot.id; // Get the document ID
+                    const docId = docSnapshot.id;
                     const submissionEl = document.createElement('div');
                     submissionEl.className = 'p-4 bg-gray-100 rounded-lg shadow-sm transition-all duration-200 ease-in-out hover:bg-gray-200';
 
@@ -211,7 +208,6 @@
                             statusColor = 'bg-gray-500';
                     }
 
-                    // Build the replies HTML
                     let repliesHtml = '';
                     if (submission.replies && submission.replies.length > 0) {
                         repliesHtml = `
@@ -229,15 +225,14 @@
                         `;
                     }
 
-                    // Admin controls
                     let adminControlsHtml = '';
                     if (isAdmin) {
                         adminControlsHtml = `
-                            <div class="admin-controls mt-4 space-y-2">
+                            <div class="admin-controls mt-4 space-y-2" data-doc-id="${docId}">
                                 <h4 class="text-sm font-semibold text-gray-700">Admin Actions</h4>
                                 <div class="flex items-center space-x-2">
                                     <label class="text-xs text-gray-700">Status:</label>
-                                    <select class="status-dropdown mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2" data-doc-id="${docId}">
+                                    <select class="status-dropdown mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm p-2">
                                         <option value="Open" ${submission.status === 'Open' ? 'selected' : ''}>Open</option>
                                         <option value="In Progress" ${submission.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
                                         <option value="Fixed" ${submission.status === 'Fixed' ? 'selected' : ''}>Fixed</option>
@@ -249,13 +244,12 @@
                                         Reply
                                     </button>
                                 </div>
-                                <button class="delete-btn w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 ease-in-out mt-4" data-doc-id="${docId}">
+                                <button class="delete-btn w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 ease-in-out mt-4">
                                     Delete
                                 </button>
                             </div>
                         `;
                     }
-
 
                     submissionEl.innerHTML = `
                         <div class="flex justify-between items-center mb-1">
@@ -282,11 +276,11 @@
         };
 
         const handleAdminControlsChange = async (event) => {
-            if (!isAdmin) return; 
+            if (!isAdmin) return;
             const dropdown = event.target.closest('.status-dropdown');
             if (dropdown) {
                 try {
-                    const docId = dropdown.dataset.docId;
+                    const docId = dropdown.closest('.admin-controls').dataset.docId;
                     const newStatus = dropdown.value;
                     const docRef = doc(db, 'reports', docId);
                     await updateDoc(docRef, { status: newStatus });
@@ -301,15 +295,12 @@
             const button = event.target.closest('button');
             if (!button) return;
 
-            // Find the closest parent with the data-doc-id attribute
-            const submissionEl = button.closest('.admin-controls');
-            if (!submissionEl) return;
-            const docId = submissionEl.querySelector('.status-dropdown').dataset.docId;
+            const adminControlsDiv = button.closest('.admin-controls');
+            if (!adminControlsDiv) return;
+            const docId = adminControlsDiv.dataset.docId;
             const docRef = doc(db, 'reports', docId);
 
-            // Handle delete button
             if (button.classList.contains('delete-btn')) {
-                // First click: Change text to confirm
                 if (button.textContent === "Delete") {
                     button.textContent = "Confirm Delete";
                     button.classList.remove('bg-red-600', 'hover:bg-red-700');
@@ -320,10 +311,8 @@
                             button.classList.remove('bg-orange-500', 'hover:bg-orange-600');
                             button.classList.add('bg-red-600', 'hover:bg-red-700');
                         }
-                    }, 3000); // Revert after 3 seconds if not clicked again
-                } 
-                // Second click: Delete the document
-                else if (button.textContent === "Confirm Delete") {
+                    }, 3000);
+                } else if (button.textContent === "Confirm Delete") {
                     try {
                         await deleteDoc(docRef);
                         showStatus("Request successfully deleted.");
@@ -334,10 +323,9 @@
                 }
             }
             
-            // Handle reply button
             if (button.classList.contains('reply-btn')) {
                 try {
-                    const textarea = submissionEl.querySelector('.reply-textarea');
+                    const textarea = adminControlsDiv.querySelector('.reply-textarea');
                     const replyText = textarea.value;
                     if (replyText.trim() === '') return;
 
